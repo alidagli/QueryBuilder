@@ -326,7 +326,8 @@ class QueryBuilder
             $sqlText .= ' ORDER BY ' . implode(', ', $this->order);
         }
 
-        if ($buildType != 'count' && !empty($this->limit)) {
+        $dontAddLimitFor = ['count','single'];
+        if (!in_array($buildType,$dontAddLimitFor) && !empty($this->limit)) {
             $sqlText .= ' LIMIT ' . $this->limit;
         }
 
