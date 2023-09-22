@@ -163,7 +163,7 @@ $users = $db->table('users')
 
 ### Düz Sorgu Çalıştırma (Builder Olmadan)
 ```php
-$users = $db->raw("SELECT * FROM users"); // $pdo->query($query) olarak çalıştırılır
+$users = $db->raw("SELECT * FROM users")->fetchAll(); // $pdo->query($query)->fetchAll(); olarak çalıştırılır
 
 $users = $db->execRaw("SET NAMES 'utf8'"); // $pdo->exec($query) olarak çalıştırılır
 ```
