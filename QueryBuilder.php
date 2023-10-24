@@ -195,6 +195,18 @@ class QueryBuilder
         return $this;
     }
 
+    public function isNull($column)
+    {
+        $this->where[] = $column . ' IS NULL';
+        return $this;
+    }
+
+    public function isNotNull($column)
+    {
+        $this->where[] = $column . ' IS NOT NULL';
+        return $this;
+    }
+
     public function orderBy($column, $direction = 'ASC')
     {
         $this->order[] = $column . ' ' . strtoupper($direction);
