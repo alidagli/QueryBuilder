@@ -398,7 +398,7 @@ class QueryBuilder
 
         $this->resetDefaults();
 
-        return $query->fetch();
+        return $query->rowCount();
     }
 
     public function count()
