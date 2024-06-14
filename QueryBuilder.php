@@ -6,17 +6,19 @@ class QueryBuilder
     private $table;
     private $columns;
     private $bindings = [];
-    private $where = [];
-    private $orWhere = [];
+    private $where = '';
     private $order = [];
     private $limit;
     private $joins = [];
     private $groupBy;
     private $bindCounter = 0;
 
-    public function __construct(PDO $db)
+    public function __construct(PDO $db, $counterContinues = null)
     {
         $this->db = $db;
+        if (!is_null($counterContinues)) {
+            $this->bindCounter = $counterContinues;
+        }
     }
 
     public function raw($query)
@@ -44,9 +46,58 @@ class QueryBuilder
         return $this->bindCounter;
     }
 
+    private function formatColumn($column)
+    {
+        $exp = null;
+        if (is_array($column)) {
+            $exp = $column;
+        } else if (strpos($column, ',') !== false) {
+            $exp = explode(',', $column);
+        }
+
+        $newColumns = '';
+        if (is_array($exp)) {
+            foreach ($exp as $col) {
+                if (strpos($col, '.') !== false) {
+                    $expCol = explode('.', $col);
+                    $newColumns .= '`' . $expCol[0] . '`.';
+                    if ($expCol[1] != '*') {
+                        $newColumns .= '`' . $expCol[1] . '`, ';
+                    } else {
+                        $newColumns .= $expCol[1] . ', ';
+                    }
+                } else {
+                    if ($col != '*') {
+                        $newColumns .= '`' . $col . '`, ';
+                    } else {
+                        $newColumns .= $col . ', ';
+                    }
+                }
+            }
+        } else {
+            if ($column != '*') {
+                if (strpos($column, '.') !== false) {
+                    $expCol = explode('.', $column);
+                    $newColumns .= '`' . $expCol[0] . '`.';
+                    if ($expCol[1] != '*') {
+                        $newColumns .= '`' . $expCol[1] . '`, ';
+                    } else {
+                        $newColumns .= $expCol[1] . ', ';
+                    }
+                } else {
+                    $newColumns = '`' . $column . '`';
+                }
+            } else {
+                $newColumns = $column;
+            }
+        }
+
+        return rtrim($newColumns, ', ');
+    }
+
     public function table($table)
     {
-        $this->table = trim($table);
+        $this->table = $this->formatColumn(trim($table));
         return $this;
     }
 
@@ -61,18 +112,12 @@ class QueryBuilder
         $table = $this->getTable();
 
         if (!empty($columns)) {
-            if (is_array($columns)) {
-                $columns = implode(',', $columns);
-            } else {
-                $columns = trim($columns, ',');
-            }
+            $columns = $this->formatColumn($columns);
         } else {
             $columns = '*';
         }
 
-        $results = $db->query("SELECT " . $columns . " FROM " . $table);
-        $results = $results->fetchAll();
-        return $results;
+        return $db->query("SELECT " . $columns . " FROM " . $table)->fetchAll();
     }
 
     public function create($params = [])
@@ -112,7 +157,7 @@ class QueryBuilder
         $query->execute($this->bindings);
 
         $this->resetDefaults();
-        if($query){
+        if ($query) {
             return true;
         }
         return false;
@@ -120,36 +165,60 @@ class QueryBuilder
 
     public function whereRaw($condition)
     {
-        $this->where[] = $condition;
+        $this->where .= trim($condition, ' ') . ' ';
         return $this;
     }
 
     public function where($column, $operator = null, $value = null)
     {
-        if ($value === null) {
-            $value = $operator;
-            $operator = '=';
+        if (is_callable($column)) {
+            $subQuery = new static($this->getDB(), $this->bindCounter);
+            $column($subQuery);
+
+            $this->where .= ' AND (' . $subQuery->where;
+            $this->bindings = array_merge($this->bindings, $subQuery->bindings);
+            $this->bindCounter = $subQuery->bindCounter;
+
+            $this->where = ltrim($this->where, ' AND ');
+            $this->where .= ') ';
+        } else {
+            if ($value === null) {
+                $value = $operator;
+                $operator = '=';
+            }
+
+            $bindKey = ':wa' . $this->getNewCounter() . '_' . str_replace('.', '_', $column);
+            $this->where .= 'AND ' . $this->formatColumn($column) . ' ' . $operator . ' ' . $bindKey . ' ';
+            $this->bindings[$bindKey] = $value;
+            $this->where = ltrim($this->where, 'AND ');
         }
-
-        $bindKey = ':wa' . $this->getNewCounter() . '_' . str_replace('.', '_', $column);
-
-        $this->where[] = $column . ' ' . $operator . ' ' . $bindKey;
-        $this->bindings[$bindKey] = $value;
 
         return $this;
     }
 
     public function orWhere($column, $operator = null, $value = null)
     {
-        if ($value === null) {
-            $value = $operator;
-            $operator = '=';
+        if (is_callable($column)) {
+            $subQuery = new static($this->getDB(), $this->bindCounter);
+            $column($subQuery);
+
+            $this->where .= ' OR (' . $subQuery->where;
+            $this->bindings = array_merge($this->bindings, $subQuery->bindings);
+            $this->bindCounter = $subQuery->bindCounter;
+
+            $this->where = ltrim($this->where, ' OR ');
+            $this->where .= ') ';
+        } else {
+            if ($value === null) {
+                $value = $operator;
+                $operator = '=';
+            }
+
+            $bindKey = ':wo' . $this->getNewCounter() . '_' . str_replace('.', '_', $column);
+            $this->where .= 'OR ' . $this->formatColumn($column) . ' ' . $operator . ' ' . $bindKey . ' ';
+            $this->bindings[$bindKey] = $value;
+            $this->where = ltrim($this->where, 'OR ');
         }
-
-        $bindKey = ':wo' . $this->getNewCounter() . '_' . str_replace('.', '_', $column);
-
-        $this->orWhere[] = $column . ' ' . $operator . ' ' . $bindKey;
-        $this->bindings[$bindKey] = $value;
 
         return $this;
     }
@@ -165,7 +234,22 @@ class QueryBuilder
 
         $clauseText = rtrim($clauseText, ',');
 
-        $this->where[] = $column . ' IN (' . $clauseText . ')';
+        $this->where .= 'AND ' . $this->formatColumn($column) . ' IN (' . $clauseText . ') ';
+        return $this;
+    }
+
+    public function orWhereIn($column, $values)
+    {
+        $clauseText = '';
+        foreach ($values as $index => $item) {
+            $bindKey = ':wi' . $this->getNewCounter() . '_' . str_replace('.', '_', $column);
+            $clauseText .= $bindKey . ',';
+            $this->bindings[$bindKey] = $item;
+        }
+
+        $clauseText = rtrim($clauseText, ',');
+
+        $this->where .= 'OR ' . $this->formatColumn($column) . ' IN (' . $clauseText . ') ';
         return $this;
     }
 
@@ -180,7 +264,22 @@ class QueryBuilder
 
         $clauseText = rtrim($clauseText, ',');
 
-        $this->where[] = $column . ' NOT IN (' . $clauseText . ')';
+        $this->where .= 'AND ' . $this->formatColumn($column) . ' NOT IN (' . $clauseText . ') ';
+        return $this;
+    }
+
+    public function orWhereNotIn($column, $values)
+    {
+        $clauseText = '';
+        foreach ($values as $index => $item) {
+            $bindKey = ':wni' . $this->getNewCounter() . '_' . str_replace('.', '_', $column);
+            $clauseText .= $bindKey . ',';
+            $this->bindings[$bindKey] = $item;
+        }
+
+        $clauseText = rtrim($clauseText, ',');
+
+        $this->where .= 'OR ' . $this->formatColumn($column) . ' NOT IN (' . $clauseText . ') ';
         return $this;
     }
 
@@ -189,7 +288,18 @@ class QueryBuilder
         $bindKeyStart = ':wbs' . $this->getNewCounter() . '_' . str_replace('.', '_', $column);
         $bindKeyEnd = ':wbe' . $this->getNewCounter() . '_' . str_replace('.', '_', $column);
 
-        $this->where[] = $column . ' BETWEEN ' . $bindKeyStart . ' AND ' . $bindKeyEnd;
+        $this->where .= 'AND ' . $this->formatColumn($column) . ' BETWEEN ' . $bindKeyStart . ' AND ' . $bindKeyEnd . ' ';
+        $this->bindings[$bindKeyStart] = $min;
+        $this->bindings[$bindKeyEnd] = $max;
+        return $this;
+    }
+
+    public function orWhereBetween($column, $min, $max)
+    {
+        $bindKeyStart = ':wbs' . $this->getNewCounter() . '_' . str_replace('.', '_', $column);
+        $bindKeyEnd = ':wbe' . $this->getNewCounter() . '_' . str_replace('.', '_', $column);
+
+        $this->where .= 'OR ' . $this->formatColumn($column) . ' BETWEEN ' . $bindKeyStart . ' AND ' . $bindKeyEnd . ' ';
         $this->bindings[$bindKeyStart] = $min;
         $this->bindings[$bindKeyEnd] = $max;
         return $this;
@@ -197,19 +307,19 @@ class QueryBuilder
 
     public function isNull($column)
     {
-        $this->where[] = $column . ' IS NULL';
+        $this->where .= $this->formatColumn($column) . ' IS NULL ';
         return $this;
     }
 
     public function isNotNull($column)
     {
-        $this->where[] = $column . ' IS NOT NULL';
+        $this->where .= $this->formatColumn($column) . ' IS NOT NULL ';
         return $this;
     }
 
     public function orderBy($column, $direction = 'ASC')
     {
-        $this->order[] = $column . ' ' . strtoupper($direction);
+        $this->order[] = $this->formatColumn($column) . ' ' . strtoupper($direction);
         return $this;
     }
 
@@ -226,7 +336,7 @@ class QueryBuilder
     private function addJoin($reference_table, $reference_column, $local_column, $join_type = 'JOIN')
     {
         $table = $this->getTable();
-        $this->joins[] = $join_type . ' ' . $reference_table . ' ON ' . $reference_table . '.' . $reference_column . ' = ' . $table . '.' . $local_column;
+        $this->joins[] = $join_type . ' ' . $this->formatColumn($reference_table) . ' ON ' . $table . '.' . $this->formatColumn($local_column) . ' = ' . $this->formatColumn($reference_table) . '.' . $this->formatColumn($reference_column);
         return $this;
     }
 
@@ -262,26 +372,14 @@ class QueryBuilder
 
     public function select($columns)
     {
-        if (is_array($columns)) {
-            $columns = implode(',', $columns);
-        } else {
-            $columns = trim($columns, ',');
-        }
-
-        $this->columns = $columns;
+        $this->columns = $this->formatColumn($columns);
 
         return $this;
     }
 
     public function groupBy($columns)
     {
-        if (is_array($columns)) {
-            $columns = implode(', ', $columns);
-        } else {
-            $columns = trim($columns, ',');
-        }
-
-        $this->groupBy = $columns;
+        $this->groupBy = $this->formatColumn($columns);
 
         return $this;
     }
@@ -316,18 +414,10 @@ class QueryBuilder
             $baseQuery .= ' ' . implode(' ', $this->joins);
         }
 
-        if (!empty($this->where) && count($this->where)) {
-            $sqlText .= ' WHERE (' . implode(' AND ', $this->where) . ')';
-        }
-
-        if (!empty($this->orWhere) && count($this->orWhere)) {
-            if ($sqlText != '') {
-                $sqlText .= ' AND ';
-            } else {
-                $sqlText .= ' WHERE ';
-            }
-
-            $sqlText .= '(' . implode(' OR ', $this->orWhere) . ')';
+        if (!empty($this->where)) {
+            $whereText = trim($this->where, ' AND ');
+            $whereText = trim($this->where, ' OR ');
+            $sqlText .= ' WHERE ' . $whereText;
         }
 
         if (!empty($this->groupBy)) {
@@ -338,8 +428,8 @@ class QueryBuilder
             $sqlText .= ' ORDER BY ' . implode(', ', $this->order);
         }
 
-        $dontAddLimitFor = ['count','single'];
-        if (!in_array($buildType,$dontAddLimitFor) && !empty($this->limit)) {
+        $dontAddLimitFor = ['count', 'single'];
+        if (!in_array($buildType, $dontAddLimitFor) && !empty($this->limit)) {
             $sqlText .= ' LIMIT ' . $this->limit;
         }
 
@@ -379,8 +469,7 @@ class QueryBuilder
         $this->table = '';
         $this->columns = '';
         $this->bindings = [];
-        $this->where = [];
-        $this->orWhere = [];
+        $this->where = '';
         $this->order = [];
         $this->limit = '';
         $this->joins = [];
