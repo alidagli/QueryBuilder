@@ -307,13 +307,13 @@ class QueryBuilder
 
     public function isNull($column)
     {
-        $this->where .= $this->formatColumn($column) . ' IS NULL ';
+        $this->where .= 'AND ' . $this->formatColumn($column) . ' IS NULL ';
         return $this;
     }
 
     public function isNotNull($column)
     {
-        $this->where .= $this->formatColumn($column) . ' IS NOT NULL ';
+        $this->where .= 'AND ' . $this->formatColumn($column) . ' IS NOT NULL ';
         return $this;
     }
 
@@ -415,8 +415,8 @@ class QueryBuilder
         }
 
         if (!empty($this->where)) {
-            $whereText = trim($this->where, ' AND ');
-            $whereText = trim($this->where, ' OR ');
+            $whereText = trim($this->where, 'AND ');
+            $whereText = trim($whereText, 'OR ');
             $sqlText .= ' WHERE ' . $whereText;
         }
 
