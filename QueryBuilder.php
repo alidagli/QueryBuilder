@@ -21,9 +21,13 @@ class QueryBuilder
         }
     }
 
-    public function raw($query)
+    public function raw($query, $bindings = null)
     {
         $db = $this->getDB();
+
+        if (is_array($bindings)) {
+            return $db->prepare($query)->execute($bindings);
+        }
 
         return $db->query($query);
     }
