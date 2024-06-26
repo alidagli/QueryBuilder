@@ -4,7 +4,7 @@ class QueryBuilder
 {
     private $db;
     private $table;
-    private $columns;
+    private $columns = '';
     private $bindings = [];
     private $where = '';
     private $order = [];
@@ -53,6 +53,10 @@ class QueryBuilder
     private function formatColumn($column)
     {
         $exp = null;
+        if (!is_array($column)) {
+            $column = rtrim($column, ',');
+        }
+
         if (is_array($column)) {
             $exp = $column;
         } else if (strpos($column, ',') !== false) {
@@ -376,8 +380,28 @@ class QueryBuilder
 
     public function select($columns)
     {
-        $this->columns = $this->formatColumn($columns);
+        $this->columns .= $this->formatColumn($columns) . ',';
 
+        return $this;
+    }
+
+    public function selectSum($column, $as = null)
+    {
+        $columnAs = null;
+        if (!is_null($as)) {
+            $columnAs = ' AS ' . $this->formatColumn($as);
+        }
+        $this->columns .= 'SUM(' . $this->formatColumn($column) . ')' . $columnAs . ',';
+        return $this;
+    }
+
+    public function selectDistinct($column, $as = null)
+    {
+        $columnAs = null;
+        if (!is_null($as)) {
+            $columnAs = ' AS ' . $this->formatColumn($as);
+        }
+        $this->columns .= 'DISTINCT(' . $this->formatColumn($column) . ')' . $columnAs . ',';
         return $this;
     }
 
@@ -389,7 +413,7 @@ class QueryBuilder
     }
 
     /**
-     * @param string $buildType = 'all','count','single','delete','update'
+     * @param string $buildType = 'all','count','single','delete','update', 'one'
      */
     private function buildQuery($buildType = 'all', $baseQueryOverride = null)
     {
@@ -399,7 +423,7 @@ class QueryBuilder
             $columnsText = 'COUNT(*) as aggregate';
         } else {
             if ($this->columns != '') {
-                $columnsText = $this->columns;
+                $columnsText = rtrim($this->columns, ',');
             } else {
                 $columnsText = '*';
             }
@@ -498,6 +522,19 @@ class QueryBuilder
     {
         $db = $this->getDB();
         $queryText = $this->buildQuery('count');
+
+        $query = $db->prepare($queryText);
+        $query->execute($this->bindings);
+
+        $this->resetDefaults();
+
+        return $query->fetchColumn();
+    }
+
+    public function one()
+    {
+        $db = $this->getDB();
+        $queryText = $this->buildQuery('one');
 
         $query = $db->prepare($queryText);
         $query->execute($this->bindings);

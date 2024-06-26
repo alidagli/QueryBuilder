@@ -86,6 +86,26 @@ $users = $db->table('users')
 // SELECT COUNT(*) AS aggregate FROM users WHERE status = 'deleted'
 ```
 
+### SUM(column) kullanımı
+```php
+$users = $db->table('orders')
+    ->selectSum('order_price','total')
+    ->where('status','completed')
+    ->one();
+// SELECT SUM(order_price) AS total FROM orders WHERE status = 'completed'
+```
+
+> '->one()' methodu $pdo->fetchColumn() kullanır
+
+### DISTINCT(column) kullanımı
+```php
+$users = $db->table('orders')
+    ->selectDistinct('customer_id','customer')
+    ->where('status','completed')
+    ->one();
+// SELECT DISTINCT(customer_id) AS customer FROM orders WHERE status = 'completed'
+```
+
 ### Where kullanımı
 ```php
 $users = $db->table('users')
