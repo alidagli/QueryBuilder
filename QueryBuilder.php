@@ -70,13 +70,13 @@ class QueryBuilder
                     $expCol = explode('.', $col);
                     $newColumns .= '`' . $expCol[0] . '`.';
                     if ($expCol[1] != '*') {
-                        $newColumns .= '`' . $expCol[1] . '`, ';
+                        $newColumns .= $this->parseAsColumn($expCol[1]);
                     } else {
                         $newColumns .= $expCol[1] . ', ';
                     }
                 } else {
                     if ($col != '*') {
-                        $newColumns .= '`' . $col . '`, ';
+                        $newColumns .= $this->parseAsColumn($col);
                     } else {
                         $newColumns .= $col . ', ';
                     }
@@ -88,12 +88,12 @@ class QueryBuilder
                     $expCol = explode('.', $column);
                     $newColumns .= '`' . $expCol[0] . '`.';
                     if ($expCol[1] != '*') {
-                        $newColumns .= '`' . $expCol[1] . '`, ';
+                        $newColumns .= $this->parseAsColumn($expCol[1]);
                     } else {
                         $newColumns .= $expCol[1] . ', ';
                     }
                 } else {
-                    $newColumns = '`' . $column . '`';
+                    $newColumns .= $this->parseAsColumn($column);
                 }
             } else {
                 $newColumns = $column;
@@ -101,6 +101,32 @@ class QueryBuilder
         }
 
         return rtrim($newColumns, ', ');
+    }
+
+    private function parseAsColumn($column)
+    {
+        $newColumns = '';
+        if (strpos($column, ' as ') !== false) {
+            $expCol = explode(' as ', $column);
+            $newColumns .= '`' . $expCol[0] . '` AS ';
+            if ($expCol[1] != '*') {
+                $newColumns .= '`' . $expCol[1] . '`, ';
+            } else {
+                $newColumns .= $expCol[1] . ', ';
+            }
+        } else if (strpos($column, ' AS ') !== false) {
+            $expCol = explode(' AS ', $column);
+            $newColumns .= '`' . $expCol[0] . '` AS ';
+            if ($expCol[1] != '*') {
+                $newColumns .= '`' . $expCol[1] . '`, ';
+            } else {
+                $newColumns .= $expCol[1] . ', ';
+            }
+        } else {
+            $newColumns .= '`' . $column . '`, ';
+        }
+
+        return $newColumns;
     }
 
     public function table($table)
