@@ -494,9 +494,14 @@ class QueryBuilder
         return $this->addJoin($reference_table, $reference_column, $local_column, 'OUTER JOIN');
     }
 
-    public function select(string|array $columns): QueryBuilder
+    public function select(string|array $columns, ?string $as = null): QueryBuilder
     {
-        $this->columns .= $this->formatColumn($columns) . ',';
+        $asText = '';
+        if (!is_array($columns) && $as !== null) {
+            $asText = ' AS ' . $this->formatColumn($as);
+        }
+
+        $this->columns .= $this->formatColumn($columns) . $asText . ',';
 
         return $this;
     }
