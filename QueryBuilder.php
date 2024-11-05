@@ -204,7 +204,7 @@ class QueryBuilder
     }
 
     /**
-     * @param string $b$typeuildType = 'and','andnot','or','ornot','in', 'orin', 'notin', 'ornotin'
+     * @param string $type = 'and','andnot','or','ornot','in', 'orin', 'notin', 'ornotin'
      */
     private function generateWhereSub($type, $column, $subQuery): QueryBuilder
     {
