@@ -2,18 +2,18 @@
 
 class QueryBuilder
 {
-    private $db;
-    private $table;
-    private $columns = '';
-    private $bindings = [];
-    private $where = '';
-    private $order = [];
-    private $limit;
-    private $joins = [];
-    private $groupBy;
-    private $bindCounter = 0;
+    private PDO $db;
+    private string $table;
+    private string $columns = '';
+    private array $bindings = [];
+    private string $where = '';
+    private array $order = [];
+    private string $limit;
+    private array $joins = [];
+    private string $groupBy;
+    private int $bindCounter = 0;
 
-    public function __construct(PDO $db, $counterContinues = null)
+    public function __construct(PDO $db, int $counterContinues = null)
     {
         $this->db = $db;
         if (!is_null($counterContinues)) {
@@ -21,7 +21,7 @@ class QueryBuilder
         }
     }
 
-    public function raw($query, $bindings = null)
+    public function raw(string $query, array $bindings = null)
     {
         $db = $this->getDB();
 
@@ -32,25 +32,25 @@ class QueryBuilder
         return $db->query($query);
     }
 
-    public function execRaw($query)
+    public function execRaw(string $query)
     {
         $db = $this->getDB();
 
         return $db->exec($query);
     }
 
-    private function getDB()
+    private function getDB(): PDO
     {
         return $this->db;
     }
 
-    private function getNewCounter()
+    private function getNewCounter(): int
     {
         $this->bindCounter += 1;
         return $this->bindCounter;
     }
 
-    private function formatColumn($column)
+    private function formatColumn(string|array $column): string
     {
         $exp = null;
         if (!is_array($column)) {
@@ -103,7 +103,7 @@ class QueryBuilder
         return rtrim($newColumns, ', ');
     }
 
-    private function parseAsColumn($column)
+    private function parseAsColumn(string $column): string
     {
         $newColumns = '';
         if (strpos($column, ' as ') !== false) {
@@ -129,18 +129,18 @@ class QueryBuilder
         return $newColumns;
     }
 
-    public function table($table)
+    public function table(string $table): QueryBuilder
     {
         $this->table = $this->formatColumn(trim($table));
         return $this;
     }
 
-    private function getTable()
+    private function getTable(): string
     {
         return $this->table;
     }
 
-    public function all($columns = null)
+    public function all(string|array $columns = null)
     {
         $db = $this->getDB();
         $table = $this->getTable();
@@ -154,7 +154,7 @@ class QueryBuilder
         return $db->query("SELECT " . $columns . " FROM " . $table)->fetchAll();
     }
 
-    public function create($params = [])
+    public function create(array $params = [])
     {
         $db = $this->getDB();
         $table = $this->getTable();
@@ -169,7 +169,7 @@ class QueryBuilder
         return $db->lastInsertId();
     }
 
-    public function update($params = [])
+    public function update(array $params = [])
     {
         $db = $this->getDB();
         $table = $this->getTable();
@@ -197,13 +197,103 @@ class QueryBuilder
         return false;
     }
 
-    public function whereRaw($condition)
+    public function whereRaw(string $condition): QueryBuilder
     {
         $this->where .= trim($condition, ' ') . ' ';
         return $this;
     }
 
-    public function where($column, $operator = null, $value = null)
+    /**
+     * @param string $b$typeuildType = 'and','andnot','or','ornot','in', 'orin', 'notin', 'ornotin'
+     */
+    private function generateWhereSub($type, $column, $subQuery): QueryBuilder
+    {
+        $operator = '=';
+        $condition = 'AND';
+
+        if ($type == 'and') {
+            $condition = 'AND';
+            $operator = '=';
+        } else if ($type == 'andnot') {
+            $condition = 'AND';
+            $operator = '!=';
+        } else if ($type == 'or') {
+            $condition = 'OR';
+            $operator = '=';
+        } else if ($type == 'ornot') {
+            $condition = 'OR';
+            $operator = '!=';
+        } else if ($type == 'in') {
+            $condition = 'AND';
+            $operator = 'IN';
+        } else if ($type == 'orin') {
+            $condition = 'OR';
+            $operator = 'IN';
+        } else if ($type == 'notin') {
+            $condition = 'AND';
+            $operator = 'NOT IN';
+        } else if ($type == 'ornotin') {
+            $condition = 'OR';
+            $operator = 'NOT IN';
+        }
+
+
+        if (is_callable($subQuery)) {
+            $subInstance = new static($this->getDB(), $this->bindCounter);
+            $subQuery($subInstance);
+
+            $this->where .=  ' ' . $condition . ' ' . $this->formatColumn($column) . ' ' . $operator . ' (' . $subInstance->toSubSql() . ') ';
+            $this->bindings = array_merge($this->bindings, $subInstance->bindings);
+            $this->bindCounter = $subInstance->bindCounter;
+        } else {
+            /** raw query */
+            $this->where .= ' ' . $condition . ' ' . $this->formatColumn($column) . ' ' . $operator . ' (' . $subQuery . ') ';
+        }
+
+        return $this;
+    }
+
+    public function whereSub($column, $subQuery): QueryBuilder
+    {
+        return $this->generateWhereSub('and', $column, $subQuery);
+    }
+
+    public function whereNotSub($column, $subQuery): QueryBuilder
+    {
+        return $this->generateWhereSub('andnot', $column, $subQuery);
+    }
+
+    public function whereOrSub($column, $subQuery): QueryBuilder
+    {
+        return $this->generateWhereSub('or', $column, $subQuery);
+    }
+
+    public function whereOrNotSub($column, $subQuery): QueryBuilder
+    {
+        return $this->generateWhereSub('ornot', $column, $subQuery);
+    }
+
+    public function whereInSub($column, $subQuery): QueryBuilder
+    {
+        return $this->generateWhereSub('in', $column, $subQuery);
+    }
+
+    public function whereOrInSub($column, $subQuery): QueryBuilder
+    {
+        return $this->generateWhereSub('orin', $column, $subQuery);
+    }
+
+    public function whereNotInSub($column, $subQuery): QueryBuilder
+    {
+        return $this->generateWhereSub('notin', $column, $subQuery);
+    }
+
+    public function whereOrNotInSub($column, $subQuery): QueryBuilder
+    {
+        return $this->generateWhereSub('ornotin', $column, $subQuery);
+    }
+
+    public function where($column, $operator = null, $value = null): QueryBuilder
     {
         if (is_callable($column)) {
             $subQuery = new static($this->getDB(), $this->bindCounter);
@@ -230,7 +320,7 @@ class QueryBuilder
         return $this;
     }
 
-    public function orWhere($column, $operator = null, $value = null)
+    public function orWhere($column, $operator = null, $value = null): QueryBuilder
     {
         if (is_callable($column)) {
             $subQuery = new static($this->getDB(), $this->bindCounter);
@@ -257,7 +347,7 @@ class QueryBuilder
         return $this;
     }
 
-    public function whereIn($column, $values)
+    public function whereIn(string $column, array $values): QueryBuilder
     {
         $clauseText = '';
         foreach ($values as $index => $item) {
@@ -272,7 +362,7 @@ class QueryBuilder
         return $this;
     }
 
-    public function orWhereIn($column, $values)
+    public function orWhereIn(string $column, array $values): QueryBuilder
     {
         $clauseText = '';
         foreach ($values as $index => $item) {
@@ -287,7 +377,7 @@ class QueryBuilder
         return $this;
     }
 
-    public function whereNotIn($column, $values)
+    public function whereNotIn(string $column, array $values): QueryBuilder
     {
         $clauseText = '';
         foreach ($values as $index => $item) {
@@ -302,7 +392,7 @@ class QueryBuilder
         return $this;
     }
 
-    public function orWhereNotIn($column, $values)
+    public function orWhereNotIn(string $column, array $values): QueryBuilder
     {
         $clauseText = '';
         foreach ($values as $index => $item) {
@@ -317,7 +407,7 @@ class QueryBuilder
         return $this;
     }
 
-    public function whereBetween($column, $min, $max)
+    public function whereBetween(string $column, string|int $min, string|int $max): QueryBuilder
     {
         $bindKeyStart = ':wbs' . $this->getNewCounter() . '_' . str_replace('.', '_', $column);
         $bindKeyEnd = ':wbe' . $this->getNewCounter() . '_' . str_replace('.', '_', $column);
@@ -328,7 +418,7 @@ class QueryBuilder
         return $this;
     }
 
-    public function orWhereBetween($column, $min, $max)
+    public function orWhereBetween(string $column, string|int $min, string|int $max): QueryBuilder
     {
         $bindKeyStart = ':wbs' . $this->getNewCounter() . '_' . str_replace('.', '_', $column);
         $bindKeyEnd = ':wbe' . $this->getNewCounter() . '_' . str_replace('.', '_', $column);
@@ -339,25 +429,25 @@ class QueryBuilder
         return $this;
     }
 
-    public function isNull($column)
+    public function isNull(string $column): QueryBuilder
     {
         $this->where .= 'AND ' . $this->formatColumn($column) . ' IS NULL ';
         return $this;
     }
 
-    public function isNotNull($column)
+    public function isNotNull(string $column): QueryBuilder
     {
         $this->where .= 'AND ' . $this->formatColumn($column) . ' IS NOT NULL ';
         return $this;
     }
 
-    public function orderBy($column, $direction = 'ASC')
+    public function orderBy(string $column, string $direction = 'ASC'): QueryBuilder
     {
         $this->order[] = $this->formatColumn($column) . ' ' . strtoupper($direction);
         return $this;
     }
 
-    public function limit($limit, $take = null)
+    public function limit(int $limit, int $take = null): QueryBuilder
     {
         if (!empty($take)) {
             $limit .= ', ' . $take;
@@ -367,51 +457,51 @@ class QueryBuilder
         return $this;
     }
 
-    private function addJoin($reference_table, $reference_column, $local_column, $join_type = 'JOIN')
+    private function addJoin(string $reference_table, string $reference_column, string $local_column, string $join_type = 'JOIN'): QueryBuilder
     {
         $table = $this->getTable();
         $this->joins[] = $join_type . ' ' . $this->formatColumn($reference_table) . ' ON ' . $table . '.' . $this->formatColumn($local_column) . ' = ' . $this->formatColumn($reference_table) . '.' . $this->formatColumn($reference_column);
         return $this;
     }
 
-    public function join($reference_table, $reference_column, $local_column)
+    public function join(string $reference_table, string $reference_column, string $local_column): QueryBuilder
     {
         return $this->addJoin($reference_table, $reference_column, $local_column, 'JOIN');
     }
 
-    public function innerJoin($reference_table, $reference_column, $local_column)
+    public function innerJoin(string $reference_table, string $reference_column, string $local_column): QueryBuilder
     {
         return $this->addJoin($reference_table, $reference_column, $local_column, 'INNER JOIN');
     }
 
-    public function leftJoin($reference_table, $reference_column, $local_column)
+    public function leftJoin(string $reference_table, string $reference_column, string $local_column): QueryBuilder
     {
         return $this->addJoin($reference_table, $reference_column, $local_column, 'LEFT JOIN');
     }
 
-    public function rightJoin($reference_table, $reference_column, $local_column)
+    public function rightJoin(string $reference_table, string $reference_column, string $local_column): QueryBuilder
     {
         return $this->addJoin($reference_table, $reference_column, $local_column, 'RIGHT JOIN');
     }
 
-    public function crossJoin($reference_table, $reference_column, $local_column)
+    public function crossJoin(string $reference_table, string $reference_column, string $local_column): QueryBuilder
     {
         return $this->addJoin($reference_table, $reference_column, $local_column, 'CROSS JOIN');
     }
 
-    public function outerJoin($reference_table, $reference_column, $local_column)
+    public function outerJoin(string $reference_table, string $reference_column, string $local_column): QueryBuilder
     {
         return $this->addJoin($reference_table, $reference_column, $local_column, 'OUTER JOIN');
     }
 
-    public function select($columns)
+    public function select(string|array $columns): QueryBuilder
     {
         $this->columns .= $this->formatColumn($columns) . ',';
 
         return $this;
     }
 
-    public function selectSum($column, $as = null)
+    public function selectSum(string $column, ?string $as = null): QueryBuilder
     {
         $columnAs = null;
         if (!is_null($as)) {
@@ -421,7 +511,7 @@ class QueryBuilder
         return $this;
     }
 
-    public function selectDistinct($column, $as = null)
+    public function selectDistinct(string $column, ?string $as = null): QueryBuilder
     {
         $columnAs = null;
         if (!is_null($as)) {
@@ -431,7 +521,7 @@ class QueryBuilder
         return $this;
     }
 
-    public function selectCount($column, $as = null)
+    public function selectCount(string $column, ?string $as = null): QueryBuilder
     {
         $columnAs = null;
         if (!is_null($as)) {
@@ -441,7 +531,7 @@ class QueryBuilder
         return $this;
     }
 
-    public function groupBy($columns)
+    public function groupBy(string|array $columns): QueryBuilder
     {
         $this->groupBy = $this->formatColumn($columns);
 
@@ -451,7 +541,7 @@ class QueryBuilder
     /**
      * @param string $buildType = 'all','count','single','delete','update', 'one'
      */
-    private function buildQuery($buildType = 'all', $baseQueryOverride = null)
+    private function buildQuery(string $buildType = 'all', string $baseQueryOverride = null): string
     {
         $table = $this->getTable();
 
@@ -504,7 +594,12 @@ class QueryBuilder
         return $baseQuery . $sqlText;
     }
 
-    public function toRawSql()
+    public function toSubSql()
+    {
+        return $this->buildQuery('all');
+    }
+
+    public function toRawSql($returnType = null): string
     {
         $rawSql = $this->buildQuery('all');
         $bindings = $this->bindings;
@@ -528,7 +623,7 @@ class QueryBuilder
         return $rawSql;
     }
 
-    private function resetDefaults()
+    private function resetDefaults(): void
     {
         $this->table = '';
         $this->columns = '';
@@ -541,7 +636,7 @@ class QueryBuilder
         $this->bindCounter = 0;
     }
 
-    public function delete()
+    public function delete(): int
     {
         $db = $this->getDB();
         $queryText = $this->buildQuery('delete');
