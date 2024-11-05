@@ -431,6 +431,16 @@ class QueryBuilder
         return $this;
     }
 
+    public function selectCount($column, $as = null)
+    {
+        $columnAs = null;
+        if (!is_null($as)) {
+            $columnAs = ' AS ' . $this->formatColumn($as);
+        }
+        $this->columns .= 'COUNT(' . $this->formatColumn($column) . ')' . $columnAs . ',';
+        return $this;
+    }
+
     public function groupBy($columns)
     {
         $this->groupBy = $this->formatColumn($columns);
